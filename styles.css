@@ -481,6 +481,7 @@ dialog input[type=text]{
   max-height:90dvh;
   display:flex;
   flex-direction:column;
+  min-height:0;
   padding:16px;
 }
 .modal-hdr{
@@ -497,8 +498,10 @@ dialog input[type=text]{
 
 /* Chat feed */
 .chat-scroll{
-  flex:1;
+  flex:1 1 auto;
+  min-height:120px;
   overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
   max-height:48dvh;
   display:flex;
   flex-direction:column;
@@ -987,6 +990,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,.p
 .sync-status::before{content:"";display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-right:8px}
 .sync-status.offline{color:#f4c392}.sync-status.offline::before{background:#f4c392}
 .access-btn{background:#202820;border:1px solid #3b4738;border-radius:8px;color:#e5ebdf;padding:9px 15px;font-size:12px;font-weight:600}
+.github-link{display:grid;place-items:center;width:34px;height:34px;color:#b8c5b1;border:1px solid #3b4738;border-radius:8px;transition:color .15s,border-color .15s}
+.github-link:hover{color:#eef2e9;border-color:#5a6a56}
 .hero{display:flex;justify-content:space-between;align-items:center;gap:40px;padding:56px 0 42px}
 .eyebrow{font-size:10px;font-weight:800;letter-spacing:2px;color:#acbaa3;margin:0 0 15px;text-transform:uppercase}
 .eyebrow>span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-right:7px;vertical-align:middle}
