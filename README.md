@@ -1,6 +1,6 @@
 # Fútbol 11 · Centenario
 
-Web estática para organizar el partido del domingo 4 de octubre de 2026, a las 17:00, en el Estadio Centenario. HTML, CSS y JavaScript, sin compilación. Supabase comparte jugadores, fotos, chat y Prode.
+Web estática para organizar el partido en el Estadio Centenario. Estaba previsto para el domingo 4 de octubre de 2026, pero se suspendió por lluvia y la nueva fecha está a confirmar. HTML, CSS y JavaScript, sin compilación. Supabase comparte jugadores, fotos, chat y Prode.
 
 ## Activar esta versión
 
