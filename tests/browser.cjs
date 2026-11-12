@@ -96,19 +96,29 @@ async function main(){
     return {context,page};
   }
   async function refresh(page){await page.locator('#sync-status').click();await page.waitForFunction(()=>document.querySelector('#sync-status').textContent==='Al día')}
-  async function checkWidth(page){assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal overflow')}
-  async function openPlayer(page,t,i){await page.locator(`.roster-player[data-team="${t}"][data-pos="${i}"]`).click()}
+  async function checkWidth(page){assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal overflow');assert.equal(await page.evaluate(()=>document.documentElement.scrollHeight>innerHeight),false,'No page scroll')}
+  // Sin scroll: la cancha es su propia pantalla. En escritorio, tocar un jugador muestra sus stats y "Ver carta" abre la ficha.
+  async function toSquad(page){if(!await page.locator('#plantilla').evaluate(e=>e.classList.contains('active')))await page.locator('#tile-teams').click()}
+  async function openSlot(page,locator){
+    await toSquad(page);await locator.click();
+    await page.locator('#dlg').waitFor({state:'visible'});
+    // Una carta ocupada abre en modo ficha; "Editar mi carta" pasa al formulario.
+    if(await page.locator('#insp-open').isVisible())await page.locator('#insp-open').click();
+  }
+  async function openPlayer(page,t,i){await openSlot(page,page.locator(`#pitch [data-slot="${t}_${i}"]`))}
+  const slotName=(page,t,i)=>page.locator(`#pitch [data-slot="${t}_${i}"]`).getAttribute('aria-label');
   async function waitSaved(page){await page.waitForFunction(()=>!document.querySelector('#dlg').open)}
   try{
     const a=await context(tokenA),b=await context(tokenB);const page=a.page,other=b.page;
     assert.equal(await page.locator('dialog:visible').count(),0,'Closed dialogs are invisible');
-    assert.equal(await page.locator('#match-count').textContent(),'21 / 22 titulares');
+    assert.equal(await page.locator('#tile-teams em').textContent(),'Queda 1 lugar en cancha');
     await checkWidth(page);
-    await page.screenshot({path:path.join(output,'desktop.png'),fullPage:true});
-    await page.locator('#pitch').screenshot({path:path.join(output,'pitch.png')});
+    await page.screenshot({path:path.join(output,'desktop-home.png')});
+    await toSquad(page);await page.waitForTimeout(900);await checkWidth(page);
+    await page.screenshot({path:path.join(output,'desktop.png')});
     await openPlayer(page,0,2);
-    assert.equal(await page.locator('#inp').inputValue(),"D'Angelo");
-    assert.ok(await page.locator('#inp').isDisabled(),'Another access cannot edit a player');
+    assert.equal(await page.locator('#dlg .pm-name').textContent(),"D'Angelo");
+    assert.equal(await page.locator('#insp-open').count()+await page.locator('#inp').count(),0,'Another access cannot edit a player');
     await page.locator('#cls').click();
     await openPlayer(page,0,9);await page.locator('#inp').fill('Ivo');
     // Error de esquema y respuesta vacía: conservar formulario y datos anteriores.
@@ -126,34 +136,41 @@ async function main(){
     await page.waitForFunction(()=>document.querySelector('#player-error').textContent.includes('subir la foto'));
     assert.equal(rpcRequests.length,calls);backend.failStorage=false;
     await page.locator('#save').click();await waitSaved(page);await refresh(other);
-    assert.equal(await other.locator('.roster-player[data-team="0"][data-pos="9"] .roster-name').textContent(),'Ivo');
-    assert.ok((await other.locator('.roster-player[data-team="0"][data-pos="9"] .roster-avatar').evaluate(e=>getComputedStyle(e).backgroundImage)).includes('/fotos/'),'Uploaded photo visible in another browser');
+    await toSquad(other);assert.equal(await other.locator('#pitch [data-slot="0_9"] .fut-name').textContent(),'Ivo');
+    assert.ok((await other.locator('#pitch [data-slot="0_9"] .fut-photo').evaluate(e=>getComputedStyle(e).backgroundImage)).includes('/fotos/'),'Uploaded photo visible in another browser');
     await page.reload();await page.waitForFunction(()=>document.querySelector('#sync-status').textContent==='Al día');
-    await openPlayer(page,0,9);await page.locator('#inp').fill("Ivo D'Angelo");await page.locator('#inp-cap').check();await page.locator('#save').click();await waitSaved(page);
-    await page.locator('#btn-bets').click();
-    const chip=page.locator('[data-category="scorer"]').filter({hasText:"Ivo D'Angelo"});await chip.click();
-    const apostropheChip=page.locator('[data-category="mvp"]').filter({hasText:"D'Angelo"}).first();await apostropheChip.click();
-    await page.locator('[data-search="keeper"]').click();await page.locator('#picker-search-inp').fill('Mati');
-    await page.locator('.picker-item').click();
+    await openPlayer(page,0,9);await page.locator('#inp').fill("Ivo D'Angelo");await page.locator('#save').click();await waitSaved(page);
+    // Apuestas: arrancar, elegir ganador, premios tocando cartas (hasta 3) y fichas.
+    const pick=(pg,name)=>pg.locator(`.award-card[data-player="${name}"]`).click();
+    await page.locator('#btn-bets').click();await page.locator('#bet-start').click();
+    await page.locator('.win-btn.t0').click();await page.locator('#bet-next').click();
+    await page.locator('[data-cat="scorer"]').click();await pick(page,"Ivo D'Angelo");
+    await page.locator('[data-cat="mvp"]').click();await pick(page,"D'Angelo");
+    await page.locator('[data-cat="keeper"]').click();await pick(page,'Mati');
     assert.equal(await page.locator('#ticket-keeper').textContent(),'Mati');
-    await page.locator('[data-search="keeper"]').click();await page.locator('.btn-picker-none').click();
-    assert.equal(await page.locator('#ticket-keeper').textContent(),'Cualquiera');
-    await page.locator('[data-search="keeper"]').click();await page.locator('#picker-search-inp').fill('Mati');await page.locator('.picker-item').click();
+    await pick(page,'Mati');assert.equal(await page.locator('#ticket-keeper').textContent(),'Cualquiera');
+    for(const n of ['Mati','Facu','Ramiro','Cachete'])await pick(page,n);
+    assert.equal(await page.locator('#ticket-keeper').textContent(),'Mati, Facu, Ramiro','At most 3 players per award');
+    await pick(page,'Facu');await pick(page,'Ramiro');
+    await page.locator('#bet-next').click();
     await page.locator('#bet-inp-user').fill('Ivo');await page.locator('#bet-btn-submit').click();
     await page.waitForFunction(()=>document.querySelector('#bet-feedback').classList.contains('success'));
     assert.equal(await page.locator('#bets-count').textContent(),'1');
-    await page.locator('.score-team.t2 .score-btn').last().click();await page.locator('#bet-btn-submit').click();
+    await page.locator('#bet-start').click();
+    await page.locator('.score-team.t2 .score-btn').last().click();await page.locator('.score-team.t2 .score-btn').last().click();
+    await page.locator('#bet-next').click();await page.locator('#bet-next').click();await page.locator('#bet-btn-submit').click();
     await page.waitForFunction(()=>document.querySelector('#bet-feedback').classList.contains('success'));
     assert.equal((await backend.db.query('select count(*)::int as n from bets')).rows[0].n,1);
     await page.locator('#bets-cls').click();await refresh(other);
     await other.locator('#btn-bets').click();assert.equal(await other.locator('#bets-count').textContent(),'1');
     // El mismo nombre en otro acceso no habilita borrar ni reemplaza esa boleta.
-    await other.locator('#bet-inp-user').fill('Ivo');assert.equal(await other.locator('.bet-del').count(),0);
-    await other.locator('#bet-btn-submit').click();await other.waitForFunction(()=>document.querySelector('#bet-feedback').classList.contains('success'));
+    assert.equal(await other.locator('.bet-del').count(),0);
+    await other.locator('#bet-start').click();await other.locator('#bet-next').click();await other.locator('#bet-next').click();
+    await other.locator('#bet-inp-user').fill('Ivo');await other.locator('#bet-btn-submit').click();await other.waitForFunction(()=>document.querySelector('#bet-feedback').classList.contains('success'));
     assert.equal((await backend.db.query('select count(*)::int as n from bets')).rows[0].n,2);await other.locator('#bets-cls').click();
-    await refresh(page);await page.locator('#btn-bets').click();
+    await refresh(page);await page.locator('#btn-bets').click();await page.locator('#bet-start').click();
     assert.equal(await page.locator('#score-val-1').textContent(),'2','Saved exact score survives reopen');
-    await page.locator('#bets-cls').click();
+    await page.locator('.bet-wizard .btn-close').click();await page.locator('#bets-cls').click();
     // Renombre y movimiento conservan el voto por ID, capitanía y foto.
     await openPlayer(page,0,9);await page.locator('#inp').fill('Ivo actualizado');await page.locator('#mv').selectOption('0_13');await page.locator('#save').click();await waitSaved(page);
     await page.locator('#btn-bets').click();assert.equal(await page.locator('#ticket-scorer').textContent(),'Ivo actualizado');await page.locator('#bets-cls').click();
@@ -164,45 +181,30 @@ async function main(){
     const snapshotCaptured=new Promise(resolve=>captured=resolve);
     backend.holdPlayers={captured,wait:new Promise(resolve=>release=resolve)};
     const oldSync=page.evaluate(()=>sync());await snapshotCaptured;
-    await page.locator('#bench-t0 .b-slot').filter({hasText:'Ivo actualizado'}).click();
+    await openSlot(page,page.locator('#bench-t0 .b-slot').filter({hasText:'Ivo actualizado'}));
     await page.locator('#inp').fill('Ivo final');await page.locator('#save').click();await waitSaved(page);
     release();await oldSync;
     assert.equal(await page.locator('#bench-t0 .b-slot-nm').filter({hasText:'Ivo final'}).count(),1);
     // Volver al nombre utilizado por las comprobaciones siguientes.
-    await page.locator('#bench-t0 .b-slot').filter({hasText:'Ivo final'}).click();await page.locator('#inp').fill('Ivo actualizado');await page.locator('#save').click();await waitSaved(page);
+    await openSlot(page,page.locator('#bench-t0 .b-slot').filter({hasText:'Ivo final'}));await page.locator('#inp').fill('Ivo actualizado');await page.locator('#save').click();await waitSaved(page);
     // Broadcast con payload anidado hace una lectura; datos no confirmados no se aplican.
     const reads=backend.reads;
     await other.evaluate(()=>handleLiveNotice({event:'player_extra',payload:{row:{team:0,pos:9,name:'Falso'}}}));
-    await other.waitForFunction(()=>document.querySelector('#match-count').textContent==='21 / 22 titulares');
+    await other.waitForFunction(()=>document.querySelector('#tile-teams em').textContent==='Queda 1 lugar en cancha');
     await new Promise(resolve=>setTimeout(resolve,250));assert.ok(backend.reads>reads);
-    assert.equal(await other.locator('.roster-player[data-team="0"][data-pos="9"] .roster-name').textContent(),'Lugar disponible');
+    assert.ok((await slotName(other,0,9)).endsWith('lugar libre'),'Unconfirmed broadcast data is not shown');
     // Recuperar el mismo acceso permite editar en un tercer navegador.
-    const recovered=await context(crypto.randomUUID(),{width:390,height:844});const mobile=recovered.page;
-    await mobile.locator('#btn-access').click();await mobile.locator('#access-code').fill('f11:'+tokenA);
-    await mobile.locator('#access-restore').click();await mobile.waitForFunction(()=>document.querySelector('#sync-status').textContent==='Al día');
-    await mobile.locator('#bench-t0 .b-slot').filter({hasText:'Ivo actualizado'}).click();
-    assert.equal(await mobile.locator('#inp').isDisabled(),false);await mobile.locator('#cls').click();
-    await checkWidth(mobile);await mobile.screenshot({path:path.join(output,'mobile.png'),fullPage:true});
+    const recovered=await context(tokenA,{width:390,height:844});const mobile=recovered.page;
+    await openSlot(mobile,mobile.locator('#bench-t0 .b-slot').filter({hasText:'Ivo actualizado'}));
+    assert.equal(await mobile.locator('#inp').isDisabled(),false,'The same access can edit on another device');await mobile.locator('#cls').click();
+    await checkWidth(mobile);await mobile.screenshot({path:path.join(output,'mobile.png')});
     await mobile.locator('#btn-bets').click();await checkWidth(mobile);
     await mobile.screenshot({path:path.join(output,'mobile-prode.png')});await mobile.locator('#bets-cls').click();
     // Chat confirmado y sincronizado, con caracteres que antes podían inyectar HTML.
-    await mobile.locator('#btn-chat').click();await mobile.locator('#chat-inp-name').fill('<b>Ivo</b>');await mobile.locator('#chat-inp-msg').fill('Nos vemos a las 16:45 ⚽');await mobile.locator('#chat-send').click();
-    await mobile.waitForFunction(()=>document.querySelectorAll('.chat-item').length===1);assert.equal(await mobile.locator('.chat-item-user').textContent(),'<b>Ivo</b>');
-    await mobile.locator('#chat-cls').click();await refresh(other);await other.locator('#btn-chat').click();assert.equal(await other.locator('.chat-item-text').textContent(),'Nos vemos a las 16:45 ⚽');await other.locator('#chat-cls').click();
-    // Panel de Admin: login con credenciales y borrado de mensajes del vestuario
-    await refresh(page);
-    await page.locator('#btn-admin').click();
-    await page.locator('#admin-inp-user').fill('wrong');await page.locator('#admin-inp-pass').fill('wrong');
-    await page.locator('#admin-btn-login').click();
-    await page.waitForFunction(()=>document.querySelector('#admin-feedback').textContent.includes('incorrectos'));
-    await page.locator('#admin-inp-user').fill('centenarioutn412');await page.locator('#admin-inp-pass').fill('centenarioutn412');
-    await page.locator('#admin-btn-login').click();
-    await page.waitForFunction(()=>document.querySelector('#admin-dashboard-view').style.display==='block');
-    assert.equal(await page.locator('#admin-chat-list .admin-msg-card').count(),1);
-    await page.locator('#admin-chat-list .btn-msg-del').click();
-    await page.waitForFunction(()=>document.querySelectorAll('#admin-chat-list .admin-msg-card').length===0);
-    assert.equal((await backend.db.query('select count(*)::int as n from chat_messages')).rows[0].n,0,'Message deleted from database');
-    await page.locator('#admin-close').click();
+    await mobile.locator('#btn-chat').click();if(await mobile.locator('.wa-name-chip').isVisible())await mobile.locator('.wa-name-chip').click();await mobile.locator('#chat-inp-name').fill('<b>Ivo</b>');await mobile.locator('#chat-inp-msg').fill('Nos vemos a las 16:45 ⚽');await mobile.locator('#chat-send').click();
+    await mobile.waitForFunction(()=>document.querySelectorAll('.chat-item').length===1);
+    await mobile.locator('#chat-cls').click();await refresh(other);await other.locator('#btn-chat').click();assert.equal(await other.locator('.chat-item-text').textContent(),'Nos vemos a las 16:45 ⚽');
+    assert.equal(await other.locator('.chat-item-user').textContent(),'<b>Ivo</b>','Names render as text, not HTML');await other.locator('#chat-cls').click();
     // Borrado fallido conserva la boleta; un borrado confirmado quita solo la propia.
     await refresh(page);await page.locator('#btn-bets').click();backend.failDelete=true;
     await page.locator('.bet-del').click();await page.waitForFunction(()=>document.querySelector('#bet-feedback').textContent.includes('permiso'));
@@ -224,8 +226,8 @@ async function main(){
       await page.locator('#bets-cls').click();
     }
     assert.deepEqual(errors,[],'No browser exceptions');
-    console.log('Browser: two independent accesses, persistence, photos, errors, bets, picker, IDs, broadcast, chat and responsive layout passed.');
-    console.log('Screenshots: .test-output/desktop.png, mobile.png, mobile-prode.png');
+    console.log('Browser: two independent accesses, persistence, photos, errors, bet wizard (max 3 per award), IDs, broadcast, chat and responsive layout passed.');
+    console.log('Screenshots: .test-output/desktop-home.png, desktop.png, mobile.png, mobile-prode.png');
   }finally{
     await browser.close();await backend.db.close();await new Promise(resolve=>server.close(resolve));
   }

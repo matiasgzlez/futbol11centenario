@@ -13,7 +13,8 @@ alter table public.players add column if not exists player_id uuid;
 alter table public.players drop constraint if exists players_team_check;
 alter table public.players add constraint players_team_check check (team in (0,1,2));
 alter table public.players drop constraint if exists players_pos_check;
-alter table public.players add constraint players_pos_check check (pos between 0 and 15 and (team <> 2 or pos = 0));
+alter table public.players add constraint players_pos_check check (pos between 0 and 16 and (team <> 2 or pos = 0));
+-- pos 16 = director técnico de cada equipo.
 alter table public.players drop constraint if exists players_name_check;
 alter table public.players add constraint players_name_check check (char_length(name) <= 20);
 
@@ -22,7 +23,7 @@ alter table public.players add constraint players_name_check check (char_length(
 drop trigger if exists t_owner on public.players;
 update public.players set player_id = gen_random_uuid() where name <> '' and player_id is null;
 insert into public.players (team,pos)
-select t,p from generate_series(0,1) t cross join generate_series(0,15) p
+select t,p from generate_series(0,1) t cross join generate_series(0,16) p
 on conflict do nothing;
 insert into public.players (team,pos) values (2,0) on conflict do nothing;
 
@@ -39,6 +40,11 @@ create table if not exists public.chat_messages (
   text text not null check (char_length(text) <= 280),
   created_at timestamptz default now(), owner text
 );
+
+-- Fotos en los comentarios (URL pública del bucket "fotos").
+alter table public.chat_messages add column if not exists image text;
+alter table public.chat_messages drop constraint if exists chat_messages_image_check;
+alter table public.chat_messages add constraint chat_messages_image_check check (image is null or (char_length(image) <= 2048 and image ~ '^https://'));
 
 create or replace function public.centenario_owner() returns text
 language plpgsql stable set search_path = '' as $$
@@ -81,6 +87,9 @@ begin
   if (source_team=2 or target_team=2) and not same_slot then
     raise exception 'El árbitro no se puede intercambiar con un jugador.';
   end if;
+  if (source_pos=16 or target_pos=16) and not same_slot then
+    raise exception 'El técnico no se puede intercambiar con un jugador.';
+  end if;
   new_id := coalesce(src.player_id,gen_random_uuid());
   if not same_slot then
     update public.players set name=dst.name,photo=dst.photo,
@@ -94,7 +103,7 @@ begin
   end if;
   update public.players set name=trim(player_name),photo=player_photo,
     owner=case when is_admin then coalesce(src.owner,dst.owner) else req_owner end,
-    player_id=new_id,is_captain=(captain and target_team <> 2),updated_at=now()
+    player_id=new_id,is_captain=(captain and target_team <> 2 and target_pos <> 16),updated_at=now()
     where team=target_team and pos=target_pos;
   return query select * from public.players order by team,pos;
 end $$;

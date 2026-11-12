@@ -23,6 +23,9 @@ async function runDatabaseTests(){
     await player(1,1,'Otro capitán',{captain:true});
     assert.equal((await db.query('select count(*)::int as n from players where team=1 and is_captain')).rows[0].n,1);
     await player(0,11,'Suplente');await player(2,0,'Árbitro');
+    await player(0,16,'El Profe');
+    assert.equal((await db.query('select name from players where team=0 and pos=16')).rows[0].name,'El Profe','Coach slot exists');
+    await assert.rejects(()=>player(0,16,'El Profe',{target_team:0,target_pos:5}),/técnico/);
     await assert.rejects(()=>backend.asOwner(tokenB,d=>d.query("update players set name='intruso' where team=2 and pos=0")),/permission denied/);
     // Simular lugares antiguos sin propietario: el primer guardado los reclama.
     await db.query("update players set name='Sin acceso',owner=null where team=0 and pos=3");
@@ -41,6 +44,9 @@ async function runDatabaseTests(){
     assert.equal((await db.query('select count(*)::int as n from bets')).rows[0].n,2,'Same name can belong to two separate accesses');
     assert.equal((await backend.asOwner(tokenB,d=>d.query('delete from bets where id=$1 returning *',[betId]))).rows.length,0,'RLS protects another bet');
     assert.equal((await backend.asOwner(tokenA,d=>d.query('delete from bets where id=$1 returning *',[betId]))).rows.length,1);
+    await assert.rejects(()=>backend.asOwner(tokenA,d=>d.query("insert into chat_messages(id,author,text,image,owner) values(gen_random_uuid(),'Ivo','foto','javascript:alert(1)',$1)",[hash(tokenA)])),/chat_messages_image_check/);
+    await backend.asOwner(tokenA,d=>d.query("insert into chat_messages(id,author,text,image,owner) values(gen_random_uuid(),'Ivo','📷','https://example.com/f.jpg',$1)",[hash(tokenA)]));
+    await db.exec("delete from chat_messages");
     const chatId=crypto.randomUUID();
     await backend.asOwner(tokenA,d=>d.query('insert into chat_messages(id,author,text,owner) values($1,$2,$3,$4)',[chatId,'Ivo','Llegamos a las 16:45',hash(tokenB)]));
     assert.equal((await db.query('select owner from chat_messages where id=$1',[chatId])).rows[0].owner,hash(tokenA),'Chat stamps real owner');
