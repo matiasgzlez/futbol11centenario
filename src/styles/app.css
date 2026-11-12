@@ -2229,3 +2229,9 @@ dialog.bets-viewer::backdrop{background:rgba(2,5,6,.9);backdrop-filter:blur(6px)
   .crt-odd b{font-size:30px}
   .crt-fact{padding:4px}
 }
+@media (max-width:900px) and (min-width:701px){
+  .top-actions{gap:4px}
+  .top-actions .sync-status{display:none}
+  .top-icon{width:34px;height:34px}
+  .topbar{padding-left:12px;padding-right:12px;gap:8px}
+}

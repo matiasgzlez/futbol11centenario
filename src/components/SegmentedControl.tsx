@@ -26,7 +26,7 @@ export function SegmentedControl({ options, value, onValueChange, label, classNa
         const on = value === o.value;
         return <button key={o.value} id={o.id} type="button" aria-current={on ? "page" : undefined} tabIndex={index === selectedIndex || (found < 0 && index === 0) ? 0 : -1} data-v={o.value}
           onClick={() => onValueChange(o.value)} onKeyDown={onKeyDown}
-          className={cn("relative flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[clamp(0.8rem,1vw,1.05rem)] font-semibold transition-colors max-[380px]:gap-1 max-[380px]:px-2 max-[380px]:text-[0.72rem] sm:px-6 sm:py-2.5", on ? "text-[#06100f]" : "text-white/80 hover:text-white")}>
+          className={cn("relative flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[clamp(0.8rem,1vw,1.05rem)] font-semibold transition-colors max-[380px]:gap-1 max-[380px]:px-2 max-[380px]:text-[0.72rem] sm:px-4 sm:py-2.5 lg:px-6", on ? "text-[#06100f]" : "text-white/80 hover:text-white")}>
           {on && <motion.span layoutId="mode-pill" className="absolute inset-0 rounded-full bg-white" transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 34 }} />}
           <span className="relative flex items-center gap-1.5">{o.label}{o.accessory}</span>
         </button>;
